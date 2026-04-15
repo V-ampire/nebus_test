@@ -1,0 +1,109 @@
+name: nebus
+
+services:
+  postgres:
+    container_name: nebus.postgres
+    image: postgres:18.0
+    env_file:
+      - .env
+    volumes:
+      - nebus.postgres.data:/var/lib/postgresql
+    networks:
+      - nebus.postgres.network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 2s
+      timeout: 2s
+      retries: 3
+
+  rabbitmq:
+    container_name: nebus.rabbitmq
+    image: rabbitmq:3.13-management-alpine
+    env_file:
+      - .env
+    ports:
+      - "15672:15672"
+    networks:
+      - nebus.rabbitmq.network
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "check_port_connectivity" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  api:
+    container_name: nebus.api
+    build:
+      context: .
+      dockerfile: dockerfiles/backend.Dockerfile
+      args:
+        - SRC_DIR=api
+    env_file:
+      - .env
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./api/src:/app
+      - ./shared/bootstrap:/app/bootstrap
+      - ./api/alembic.ini:/app/alembic.ini
+    networks:
+      - nebus.api.network
+      - nebus.postgres.network
+      - nebus.rabbitmq.network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python3", "-m", "main"]
+
+  consumer:
+    container_name: nebus.consumer
+    build:
+      context: .
+      dockerfile: dockerfiles/backend.Dockerfile
+      args:
+        - SRC_DIR=consumer
+    env_file:
+      - .env
+    volumes:
+      - ./consumer/src:/app
+      - ./shared/bootstrap:/app/bootstrap
+    networks:
+      - nebus.postgres.network
+      - nebus.rabbitmq.network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: ["python3", "-m", "faststream", "run", "main:app", "--reload"]
+
+  outbox_relay:
+    container_name: nebus.outbox_relay
+    build:
+      context: .
+      dockerfile: dockerfiles/backend.Dockerfile
+      args:
+        - SRC_DIR=outbox_relay
+    env_file:
+      - .env
+    volumes:
+      - ./outbox_relay/src:/app
+      - ./shared/bootstrap:/app/bootstrap
+    networks:
+      - nebus.postgres.network
+      - nebus.rabbitmq.network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: [ "python3", "main.py"]
+
+volumes:
+  nebus.postgres.data: {}
+
+networks:
+  nebus.api.network: {}
+  nebus.postgres.network: {}
+  nebus.rabbitmq.network: {}
