@@ -47,7 +47,7 @@ make makemigrations MSG="message"
 ![Duplicate payment](./examples/duplicate.png)
 
 ### Получение платежа
-![Duplicate payment](./examples/duplicate.png)
+![Duplicate payment](./examples/get.png)
 
 ### Успешные обработки
 ![Success payment](./examples/logs.png)
